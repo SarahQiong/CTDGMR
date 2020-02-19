@@ -212,7 +212,7 @@ def Gaussian_distance(mu1, mu2, Sigma1, Sigma2, which="W2"):
             sqrt_Sigma1 = linalg.sqrtm(Sigma1)
             Sigma = Sigma1 + Sigma2 - 2 * linalg.sqrtm(
                 sqrt_Sigma1 @ Sigma2 @ sqrt_Sigma1)
-            W2_squared = np.linalg.norm(mu1 - mu2)**2 + np.trace(Sigma)
+            W2_squared = np.linalg.norm(mu1 - mu2)**2 + np.trace(Sigma) + 1e-13
         return np.sqrt(W2_squared)
     else:
         raise ValueError("This ground distance is not implemented!")
