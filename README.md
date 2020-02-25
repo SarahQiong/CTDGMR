@@ -14,7 +14,7 @@ b_weights = np.ones((K,))/K
 rmix = GMR_CTD(b_means, b_covs, b_weights, 4, n_pseudo=1, init_method=init,
                ground_distance=dist, reg=0.1, max_iter=1000, random_state=0)
 rmix.iterative()
-r_means, r_covs, r_weights = final_rmix.reduced_means, final_rmix.reduced_covs, final_rmix.reduced_weights
+r_means, r_covs, r_weights = rmix.reduced_means, rmix.reduced_covs, rmix.reduced_weights
 
 ```
 Arguments of the function
