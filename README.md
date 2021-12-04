@@ -28,7 +28,7 @@ See reduction.py for a demo of the use of the function.
 You can speicfy the parameter values of the original mixture and the order of the reduced mixture, the cost function to use in the composite transportation divergence.
 
 ### License Info
-This code is offered under the [Attribution-NonCommercial-ShareAlike 4.0 International (CC BY-NC-SA 4.0)](https://creativecommons.org/licenses/by-nc-sa/4.0/).
+This code is offered under the [Attribution-NonCommercial 4.0 International](https://creativecommons.org/licenses/by-nc/4.0/).
 
 
 
