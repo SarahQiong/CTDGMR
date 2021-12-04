@@ -1,0 +1,7 @@
+numpy==1.18.1
+scipy==1.4.1
+matplotlib==3.1.3
+cython==0.29.15
+POT
+scikit-learn==0.22.1
+cvxopt==1.2.0
