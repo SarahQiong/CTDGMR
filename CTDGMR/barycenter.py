@@ -1,15 +1,13 @@
 import numpy as np
 from scipy import linalg
 from scipy import optimize
+# from scipy.optimize import minimize, fsolve, root, newton_krylov
 from .distance import Gaussian_distance
 from .utils import log_normal
+from .optGMR import GMR_opt_BFGS
 
 
-def barycenter(means,
-               covs,
-               lambdas=None,
-               tol=1e-7,
-               ground_distance='W2'):
+def barycenter(means, covs, lambdas=None, tol=1e-7, mean_init=None, cov_init=None, ground_distance='W2'):
     """Compute the barycenter of Gaussian measures.
 
     Parameters
@@ -33,31 +31,24 @@ def barycenter(means,
 
     if ground_distance == 'KL' or ground_distance == 'WKL':
         barycenter_mean = np.sum((lambdas * means.T).T, axis=0)
-        barycenter_cov = np.sum(covs * lambdas.reshape((-1, 1, 1)),
-                                axis=0)
+        barycenter_cov = np.sum(covs * lambdas.reshape((-1, 1, 1)), axis=0)
         diff = means - barycenter_mean
         barycenter_cov += np.dot(lambdas * diff.T, diff)
     elif ground_distance == 'W2':
         barycenter_mean = np.sum((lambdas * means.T).T, axis=0)
         if d == 1:
-            barycenter_cov = np.sum(
-                np.sqrt(covs) * lambdas.reshape((-1, 1, 1)))**2
+            barycenter_cov = np.sum(np.sqrt(covs) * lambdas.reshape((-1, 1, 1)))**2
         else:
             #Fixed point iteration for Gaussian barycenter
-            barycenter_cov = barycenter(means,
-                                        covs,
-                                        lambdas,
-                                        ground_distance='KL')[1]
+            barycenter_cov = barycenter(means, covs, lambdas, ground_distance='KL')[1]
             barycenter_cov_next = np.identity(d)
-            while np.linalg.norm(barycenter_cov_next - barycenter_cov,
-                                 'fro') > tol:
+            while np.linalg.norm(barycenter_cov_next - barycenter_cov, 'fro') > tol:
                 barycenter_cov = barycenter_cov_next
                 sqrt_barycenter_cov = linalg.sqrtm(barycenter_cov)
                 barycenter_cov_next = np.zeros((d, d))
                 for k in range(m):
-                    barycenter_cov_next = barycenter_cov_next + lambdas[
-                        k] * linalg.sqrtm(sqrt_barycenter_cov @ covs[k]
-                                          @ sqrt_barycenter_cov)
+                    barycenter_cov_next = barycenter_cov_next + lambdas[k] * linalg.sqrtm(
+                        sqrt_barycenter_cov @ covs[k] @ sqrt_barycenter_cov)
     elif ground_distance == 'CS':
         # find the barycenter w.r.t. Cauchy-Schwartz divergence
         # using fixed point iteration
@@ -71,40 +62,49 @@ def barycenter(means,
             mu = compute_mean(covs, mus, cov, lambdas)
             mus = mus - mu
             weighted_mus = np.einsum('ijk,ik->ij', covs, mus)
-            sandwich = np.einsum('ij,ik->ijk', weighted_mus,
-                                 weighted_mus)
-            return mu, 2 * ((covs - sandwich) *
-                            lambdas[:, np.newaxis, np.newaxis]).sum(0)
+            sandwich = np.einsum('ij,ik->ijk', weighted_mus, weighted_mus)
+            return mu, 2 * ((covs - sandwich) * lambdas[:, np.newaxis, np.newaxis]).sum(0)
 
         def compute_mean(precisions, mus, cov, lambdas):
             # precisions are: (Sigma_r+Sigma)^{-1}
             # find sum_{r}lambda_r(Sigma_r+Sigma)^{-1}
-            weighted_precisions = precisions * lambdas[:, np.newaxis,
-                                                       np.newaxis]
+            weighted_precisions = precisions * lambdas[:, np.newaxis, np.newaxis]
             # find sum_{r}lambda_r(Sigma_r+Sigma)^{-1}mu_r
-            weighted_mus = np.einsum('ijk,ik->ij',
-                                     weighted_precisions, mus)
+            weighted_mus = np.einsum('ijk,ik->ij', weighted_precisions, mus)
             weighted_mus = weighted_mus.sum(0)
-            return np.linalg.solve(weighted_precisions.sum(0),
-                                   weighted_mus)
+            return np.linalg.solve(weighted_precisions.sum(0), weighted_mus)
 
         # initial value for fixed point iteration
-        barycenter_mean, barycenter_cov = barycenter(
-            means, covs, lambdas, ground_distance='KL')
-        barycenter_next = compute_sigma(covs, means, barycenter_cov,
-                                        lambdas)
+        barycenter_mean, barycenter_cov = barycenter(means, covs, lambdas, ground_distance='KL')
+        barycenter_next = compute_sigma(covs, means, barycenter_cov, lambdas)
         barycenter_cov_next = np.linalg.inv(barycenter_next[1])
         n_iter = 0
-        while np.linalg.norm(barycenter_cov_next - barycenter_cov,
-                             'fro') > tol:
+        while np.linalg.norm(barycenter_cov_next - barycenter_cov, 'fro') > tol:
             n_iter += 1
             barycenter_cov = barycenter_cov_next
-            barycenter_next = compute_sigma(covs, means,
-                                            barycenter_cov, lambdas)
+            barycenter_next = compute_sigma(covs, means, barycenter_cov, lambdas)
             barycenter_cov_next = np.linalg.inv(barycenter_next[1])
         barycenter_mean = barycenter_next[0]
 
     elif ground_distance == 'ISE':
+        # print(mean_init.shape, cov_init.shape)
+        reduced_mix = GMR_opt_BFGS(means,
+                                   covs,
+                                   lambdas,
+                                   1,
+                                   loss='ISE',
+                                   init_method='user',
+                                   tol=tol,
+                                   means_init=mean_init.reshape((-1, d)),
+                                   covs_init=cov_init.reshape((-1, d, d)),
+                                   weights_init=np.array([1.0]),
+                                   random_state=0)
+        reduced_mix.run()
+
+        barycenter_mean = np.squeeze(reduced_mix.reduced_means)
+        barycenter_cov = np.squeeze(reduced_mix.reduced_covs)
+        
+    elif ground_distance == 'L2':
 
         def obj(par, means, covs, lambdas):
             """
@@ -122,43 +122,44 @@ def barycenter(means,
 
             n, d = means.shape
             mean, cov_chol = par[:d], par[d:].reshape((d, d))
-            cov = cov_chol.dot(cov_chol.T)
+            eigvals = np.zeros(n)
+            for i, origin_cov in enumerate(covs):
+                eigvals[i] = np.linalg.eigvals(origin_cov).prod()
 
             if np.iscomplex(np.linalg.eigvals(cov_chol)).sum() > 0:
                 return np.Inf
             else:
+                cov = cov_chol.dot(cov_chol.T)
+
                 diff = means - mean  # shape (N, d)
                 covs = covs + cov  # shape (N, d, d)
 
                 precisions_chol = np.zeros_like(covs)
                 for k, sigma in enumerate(covs.reshape((-1, d, d))):
                     try:
-                        sigma_chol = linalg.cholesky(sigma,
-                                                     lower=True)
+                        sigma_chol = linalg.cholesky(sigma, lower=True)
                     except linalg.LinAlgError:
                         raise ValueError('covariance chol is wrong.')
-                    precisions_chol[k] = linalg.solve_triangular(
-                        sigma_chol, np.eye(d), lower=True).T
-                log_det = (np.sum(
-                    np.log(
-                        precisions_chol.reshape(n, -1)[:, ::d + 1]),
-                    1))
+                    precisions_chol[k] = linalg.solve_triangular(sigma_chol, np.eye(d),
+                                                                 lower=True).T
+                log_det = (np.sum(np.log(precisions_chol.reshape(n, -1)[:, ::d + 1]), 1))
                 y = np.einsum('ij,ijk->ik', diff, precisions_chol)
                 log_prob = np.sum(np.square(y), axis=1)
-                log_probs = -.5 * (d * np.log(2 * np.pi) +
-                                   log_prob) + log_det
+                log_probs = -.5 * (d * np.log(2 * np.pi) + log_prob) + log_det
                 probs = np.exp(log_probs)
+            
                 return np.sum(
-                    lambdas *
-                    ((4 * np.pi)**(-d / 2) /
-                     np.linalg.eigvals(cov_chol).prod() - 2 * probs))
+                    lambdas * np.sqrt((4 * np.pi)**(-d / 2) / np.linalg.eigvals(cov_chol).prod() +
+                                      (4 * np.pi)**(-d / 2) * eigvals**(-1 / 2) - 2 * probs))
 
         def grad(par, means, covs, lambdas):
             n, d = means.shape
             mean, cov_chol = par[:d], par[d:].reshape((d, d))
             cov = cov_chol.dot(cov_chol.T)
+
             if np.iscomplex(np.linalg.eigvals(cov_chol)).sum() > 0:
                 return 1e8 * np.ones(d + d**2)
+
             else:
                 diff = means - mean  # shape (N, d)
                 covs = covs + cov  # shape (N, d, d)
@@ -166,25 +167,17 @@ def barycenter(means,
                 precisions_chol = np.zeros_like(covs)
                 for k, sigma in enumerate(covs.reshape((-1, d, d))):
                     try:
-                        sigma_chol = linalg.cholesky(sigma,
-                                                     lower=True)
+                        sigma_chol = linalg.cholesky(sigma, lower=True)
                     except linalg.LinAlgError:
                         raise ValueError('covariance chol is wrong.')
-                    precisions_chol[k] = linalg.solve_triangular(
-                        sigma_chol, np.eye(d), lower=True).T
-                log_det = (np.sum(
-                    np.log(
-                        precisions_chol.reshape(n, -1)[:, ::d + 1]),
-                    1))
+                    precisions_chol[k] = linalg.solve_triangular(sigma_chol, np.eye(d),
+                                                                 lower=True).T
+                log_det = (np.sum(np.log(precisions_chol.reshape(n, -1)[:, ::d + 1]), 1))
                 y = np.einsum('ij,ijk->ik', diff, precisions_chol)
                 log_prob = np.sum(np.square(y), axis=1)
-                log_probs = -.5 * (d * np.log(2 * np.pi) +
-                                   log_prob) + log_det
+                log_probs = -.5 * (d * np.log(2 * np.pi) + log_prob) + log_det
                 probs = np.exp(log_probs)
-                precisions = np.stack([
-                    prec_chol.dot(prec_chol.T)
-                    for prec_chol in precisions_chol
-                ])
+                precisions = np.stack([prec_chol.dot(prec_chol.T) for prec_chol in precisions_chol])
 
                 # partial derivative w.r.t. mean
                 diff_std = np.einsum('ijk,ik->ij', precisions, diff)
@@ -195,56 +188,44 @@ def barycenter(means,
                 # partial derivative w.r.t. covariance
                 sandwich = np.einsum('ij,ik->ijk', diff_std, diff_std)
                 sandwich -= precisions
-                dLdSigma = -2 * np.sum(
-                    sandwich * weighted_probs.reshape((-1, 1, 1)), 0)
+                dLdSigma = -2 * np.sum(sandwich * weighted_probs.reshape((-1, 1, 1)), 0)
                 dLdSigma = dLdSigma.dot(cov_chol)
 
-                prec_chol = linalg.solve_triangular(cov_chol,
-                                                    np.eye(d),
-                                                    lower=True).T
+                prec_chol = linalg.solve_triangular(cov_chol, np.eye(d), lower=True).T
                 dLdSigma -= np.sum(lambdas) * (4 * np.pi)**(
-                    -d / 2
-                ) / np.linalg.eigvals(cov_chol).prod() * prec_chol
+                    -d / 2) / np.linalg.eigvals(cov_chol).prod() * prec_chol
 
-                return np.concatenate((dLdmu, dLdSigma.reshape(
-                    (-1, ))))
+                return np.concatenate((dLdmu, dLdSigma.reshape((-1, ))))
 
         obj_lambda = lambda x: obj(x, means, covs, lambdas)
-        grad_lambda = lambda x: grad(x, means, covs, lambdas)
+        
+        # non-convex, try multiple initial values
+        barycenter_mean, barycenter_cov = barycenter(means, covs, lambdas, ground_distance='KL')
+        barycenter_cholesky = linalg.cholesky(barycenter_cov, lower=True)
+        x0 = np.concatenate((barycenter_mean, barycenter_cholesky.reshape((-1, ))))
+        res = optimize.minimize(obj_lambda, x0, method='Nelder-Mead')
 
-        barycenter_mean, barycenter_cov = barycenter(
-            means, covs, lambdas, ground_distance='KL')
-        barycenter_cholesky = linalg.cholesky(barycenter_cov,
-                                              lower=True)
-        x0 = np.concatenate(
-            (barycenter_mean, barycenter_cholesky.reshape((-1, ))))
-        res = optimize.minimize(obj_lambda,
-                                x0,
-                                method='BFGS',
-                                jac=grad_lambda)
-        if not res.success:
-            barycenter_mean, barycenter_cov = barycenter(
-                means, covs, lambdas, ground_distance='KL')
-            barycenter_cholesky = linalg.cholesky(barycenter_cov,
-                                                  lower=True)
-            x0 = np.concatenate(
-                (barycenter_mean, barycenter_cholesky.reshape(
-                    (-1, ))))
-            res = optimize.minimize(obj_lambda,
-                                    x0,
-                                    method='Nelder-Mead')
-        if res.success:
+        # second initial value
+        barycenter_mean = np.sum((lambdas * means.T).T, axis=0)
+        barycenter_cov = np.sum(covs * lambdas.reshape((-1, 1, 1)), axis=0)
+        barycenter_cholesky = linalg.cholesky(barycenter_cov, lower=True)
+        x0 = np.concatenate((barycenter_mean, barycenter_cholesky.reshape((-1, ))))
+
+        res2 = optimize.minimize(obj_lambda, x0, method='Nelder-Mead')
+        if res2.fun < res.fun:
+            res = res2
+
+        if res.success == True:
             barycenter_mean = res.x[:d]
             barycenter_chol = res.x[d:].reshape((d, d))
             barycenter_cov = barycenter_chol.dot(barycenter_chol.T)
         else:
             print(res)
     else:
-        raise ValueError(
-            'This ground_distance %s is no implemented.' %
-            ground_distance)
+        raise ValueError('This ground_distance %s is no implemented.' % ground_distance)
 
     return barycenter_mean, barycenter_cov
+
 
 
 # sanity check
@@ -255,19 +236,14 @@ if __name__ == '__main__':
     for i in range(4):
         a = np.random.randn(d, d)
         covs[i] = a @ a.T + 0.5 * np.eye(d)
-        # print(np.linalg.eigvals(covs[i]))
     weights = np.ones(4) / 4
 
-    barycenter_mean, barycenter_cov = barycenter(means,
-                                                 covs,
-                                                 weights,
-                                                 ground_distance='KL')
+    barycenter_mean, barycenter_cov = barycenter(means, covs, weights, ground_distance='KL')
     print(barycenter_mean, barycenter_cov)
 
     barycenter_mean, barycenter_cov = barycenter(means,
                                                  covs,
                                                  weights,
                                                  ground_distance='L2',
-                                                 coeffs=np.array(
-                                                     [1, 1]))
+                                                 coeffs=np.array([1, 1]))
     print(barycenter_mean, barycenter_cov)

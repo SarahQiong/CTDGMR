@@ -83,14 +83,12 @@ def obj_grads_theta(reduced_means,
     S12_cov = reduced_covs[np.newaxis, :] + covs[:, np.newaxis]
     S12, S12_precision = log_normal(S12_diff, S12_cov, prec=True)
     S12 = np.exp(S12)
-    # S12_precision = S12_precision.reshape((n, m, d, d))
 
     # S22
     S22_diff = reduced_means[np.newaxis, :] - reduced_means[:, np.newaxis]
     S22_cov = reduced_covs[np.newaxis, :] + reduced_covs[:, np.newaxis]
     S22, S22_precision = log_normal(S22_diff, S22_cov, prec=True)
     S22 = np.exp(S22)
-    # S22_precision = S22_precision.reshape((m, m, d, d))
 
     # S11
     if loss == 'NISE':
@@ -359,11 +357,6 @@ class GMR_opt:
 
     def _initialize_parameter(self):
         """Initializatin of the reduced mixture"""
-        # self.H1 = np.zeros((self.new_n, self.new_n))
-        # self.H2 = np.zeros((self.origin_n, self.new_n))
-        # if self.loss == 'NISE':
-        #     self.H3 = np.zeros((self.origin_n, self.origin_n))
-
         if self.init_method == 'kmeans':
             total_sample_size = 10000
             X = rmixGaussian(self.means, self.covs, self.weights,
@@ -501,40 +494,20 @@ class GMR_opt:
             self.reduced_covs[i] = self.reduced_covs_chol[i].dot(
                 self.reduced_covs_chol[i].T)
         return res.fun
-        # self._update_H1_H2()
-        # return self._obj()
-
-    # def _update_H1_H2(self):
-    #     diff = self.reduced_means[
-    #         np.newaxis, :] - self.reduced_means[:, np.newaxis]
-    #     covs = self.reduced_covs[np.newaxis, :] + self.reduced_covs[:,
-    #                                                                 np.newaxis]
-    #     self.H1 = np.exp(log_normal(diff, covs))
-    #     diff = self.reduced_means[np.newaxis, :] - self.means[:, np.newaxis]
-    #     covs = self.reduced_covs[np.newaxis, :] + self.covs[:, np.newaxis]
-    #     self.H2 = np.exp(log_normal(diff, covs))
-
-    #     if self.loss == 'NISE':
-    #         diff = self.means[np.newaxis, :] - self.means[:, np.newaxis]
-    #         covs = self.covs[np.newaxis, :] + self.covs[:, np.newaxis]
-    #         self.H3 = np.exp(log_normal(diff, covs))
-
+ 
     def iterative(self):
         self._initialize_parameter()
-        # print(self.reduced_weights)
         obj = np.Inf
         proc_time = time.time()
         for n_iter in range(1, self.max_iter + 1):
-            print('Iteration %d' % n_iter)
+            # print('Iteration %d' % n_iter)
             current_time = time.time()
             obj_current = self._weight_update()
-            # print(obj_current)
             if min(self.reduced_weights) == 0:
                 warnings.warn('The reduced mixture has fewer components!')
             else:
                 change = obj - obj_current
-                # print(obj, obj_current, change)
-                print(time.time() - current_time)
+                # print(time.time() - current_time)
                 current_time = time.time()
                 if abs(change) < self.tol:
                     self.converged_ = True
@@ -546,8 +519,7 @@ class GMR_opt:
                 obj = obj_current
                 obj_current = self._support_update()
                 change = obj - obj_current
-                # print(obj, obj_current, change)
-                print(time.time() - current_time)
+                # print(time.time() - current_time)
                 if abs(change) < self.tol:
                     self.converged_ = True
                     self.obj = obj
@@ -558,7 +530,7 @@ class GMR_opt:
                 obj = obj_current
 
         self.time_ = time.time() - proc_time
-        print(self.time_, self.n_iter_)
+        # print(self.time_, self.n_iter_)
         if not self.converged_:
             warnings.warn('Did not converge. Try different init parameters, '
                           'or increase max_iter, tol ')
@@ -703,35 +675,12 @@ class GMR_opt_BFGS:
 if __name__ == '__main__':
     from scipy.stats import norm
     import matplotlib.pyplot as plt
-    # means = np.array(
-    #     [1.45, 2.2, 0.67, 0.48, 1.49, 0.91, 1.01, 1.42, 2.77, 0.89]).reshape(
-    #         (-1, 1))
-    # covs = np.array([
-    #     0.0487, 0.0305, 0.1171, 0.0174, 0.0295, 0.0102, 0.0323, 0.0380, 0.0115,
-    #     0.0679
-    # ]).reshape((-1, 1, 1))
-    # weights = np.array(
-    #     [0.03, 0.18, 0.12, 0.19, 0.02, 0.16, 0.06, 0.1, 0.08, 0.06])
-    # M = 5
+
     means = np.array([-1.0, 2]).reshape((-1, 1))
     covs = np.array([.15, .15]).reshape((-1, 1, 1))
     weights = np.array([.45, .5])
     M = 1
 
-    # reduction = GMR_CTD(means,
-    #              covs,
-    #              weights,
-    #              5,
-    #              init_method="kmeans",
-    #              tol=1e-5,
-    #              max_iter=100,
-    #              ground_distance="KL",
-    #              reg=0,
-    #              means_init=None,
-    #              covs_init=None,
-    #              weights_init=None,
-    #              random_state=0,
-    #              coeff=None)
     reduction = GMR_L2(means,
                        covs,
                        weights,
@@ -742,29 +691,10 @@ if __name__ == '__main__':
                        max_iter=100)
 
     reduction.iterative()
-    # print(
-    #     GMM_L2([means, reduction.reduced_means],
-    #            [covs, reduction.reduced_covs],
-    #            [weights, reduction.reduced_weights]))
 
     # visualization
     reduced_means = np.squeeze(reduction.reduced_means)
     reduced_covs = np.squeeze(reduction.reduced_covs)
-    # idx = np.argsort(reduced_means)
-    # reduced_means = reduced_means[idx]
-    # reduced_covs = reduced_covs[idx]
-    # reduced_weights = reduction.reduced_weights
-    # reduced_weights = reduced_weights[idx]
-
-    # print(means)
-    # print(reduced_means)
-
-    # print(covs)
-    # print(reduced_covs)
-
-    # print(weights)
-    # print(reduced_weights)
-
     x = np.linspace(-10, 10, 100)
     y2 = dmixf(x, reduced_means, np.sqrt(reduced_covs),
                reduction.reduced_weights, norm)
@@ -794,10 +724,7 @@ if __name__ == '__main__':
     means = np.squeeze(means)
     covs = np.squeeze(covs)
     y1 = dmixf(x, means, np.sqrt(covs), weights, norm)
-    # idx = np.argsort(means)
-    # means = means[idx]
-    # covs = covs[idx]
-    # weights = weights[idx]
+
 
     plt.figure()
     plt.plot(x, y1, label='original')

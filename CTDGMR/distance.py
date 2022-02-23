@@ -28,9 +28,6 @@ def Gaussian_distance(mu1, mu2, Sigma1, Sigma2, which='W2'):
     2-Wasserstein distance between Gaussians.
 
     """
-    # print(np.linalg.eigvals(Sigma1))
-    # print(np.linalg.eigvals(Sigma2))
-
     if which == 'KL':
         d = mu1.shape[0]
         # cholesky decomposition
@@ -40,7 +37,6 @@ def Gaussian_distance(mu1, mu2, Sigma1, Sigma2, which='W2'):
         precisions_chol = linalg.solve_triangular(Sigma2_chol,
                                                   np.eye(d),
                                                   lower=True)
-        # b = precisions_chol.T @ precisions_chol
         log_det = 2 * (np.sum(np.log(np.diag(Sigma2_chol))) -
                        np.sum(np.log(np.diag(Sigma1_chol))))
 
@@ -49,7 +45,7 @@ def Gaussian_distance(mu1, mu2, Sigma1, Sigma2, which='W2'):
 
         quadratic_term = precisions_chol.dot(mu2 - mu1)
         quadratic_term = np.sum(quadratic_term**2)
-
+        
         return .5 * (log_det + trace + quadratic_term - d)
 
     elif which == 'W2':
@@ -73,22 +69,13 @@ def Gaussian_distance(mu1, mu2, Sigma1, Sigma2, which='W2'):
         l2_squared = det_first_two - 2 * multivariate_normal.pdf(
             mu1, mu2, Sigma1 + Sigma2)
         return l2_squared
-
+        
     elif which == 'CS':
         log_det1 = np.log(np.linalg.eigvals(4 * np.pi * Sigma1)).sum()
         log_det2 = np.log(np.linalg.eigvals(4 * np.pi * Sigma2)).sum()
 
         return -multivariate_normal.logpdf(
             mu1, mu2, Sigma1 + Sigma2) - 0.25 * (log_det1 + log_det2)
-
-        # return -np.log(multivariate_normal.pdf(
-        #     mu1, mu2, Sigma1 + Sigma2)) + .5 * (
-        #         np.log(multivariate_normal.pdf(mu1, mu1, 2 * Sigma1)) +
-        #         np.log(multivariate_normal.pdf(mu2, mu2, 2 * Sigma2)))
-        # return -np.log(
-        #     multivariate_normal.pdf(mu1, mu2, Sigma1 + Sigma2) / np.sqrt(
-        #         multivariate_normal.pdf(mu1, mu1, 2 * Sigma1) *
-        #         multivariate_normal.pdf(mu2, mu2, 2 * Sigma2)))
 
     elif which == 'Hellinger':
         return
@@ -122,9 +109,7 @@ def GMM_CTD(means,
     cost_matrix = np.zeros((k1, k2))
 
     w1, w2 = weights[0], weights[1]
-    # w1 /= w1.sum()
-    # w2 /= w2.sum()
-
+    
     if ground_distance == 'KL':
         d = mus1.shape[1]
 
@@ -193,6 +178,26 @@ def GMM_CTD(means,
 
         cost_matrix += col_det
         cost_matrix = (cost_matrix.T + row_det).T
+        
+    elif ground_distance == 'L2':
+        diff = mus2[np.newaxis, :] - mus1[:, np.newaxis]
+        covs = Sigmas2[np.newaxis, :] + Sigmas1[:, np.newaxis]
+        cost_matrix = -2 * np.exp(log_normal(diff, covs))
+
+        # add determinant
+        col_det = np.zeros(k2)
+        for i in range(k2):
+            col_det[i] = np.linalg.det(
+                4 * np.pi * Sigmas2[[i]])**(-.5)
+
+        row_det = np.zeros(k1)
+        for i in range(k1):
+            row_det[i] = np.linalg.det(
+                4 * np.pi * Sigmas1[[i]])**(-.5)
+
+        cost_matrix += col_det
+        cost_matrix = (cost_matrix.T + row_det).T
+        cost_matrix = np.sqrt(cost_matrix)
 
     elif ground_distance == 'WISE':
         diff = mus2[np.newaxis, :] - mus1[:, np.newaxis]
@@ -234,6 +239,11 @@ def GMM_CTD(means,
                                      Sigmas2_log_det[np.newaxis, :]
                                      ) / 4 - d / 2 * np.log(4 * np.pi)
 
+    elif ground_distance == 'inner':
+        diff = mus2[np.newaxis, :] - mus1[:, np.newaxis]
+        covs = Sigmas2[np.newaxis, :] + Sigmas1[:, np.newaxis]
+        cost_matrix = np.exp(log_normal(diff, covs))
+
     else:
         raise ValueError('This ground distance is not implemented!')
 
@@ -261,6 +271,7 @@ def GMM_L2(means, covs, weights, normalized=False):
     # S12
     diff = mus2[np.newaxis, :] - mus1[:, np.newaxis]
     covs = Sigmas2[np.newaxis, :] + Sigmas1[:, np.newaxis]
+    # print(diff.shape, covs.shape)
     S12 = np.exp(log_normal(diff, covs))
 
     # S22
